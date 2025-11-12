@@ -1546,6 +1546,17 @@ static void mtk_charger_parse_dt(struct mtk_charger *info,
 		info->data.max_dmivr_charger_current =
 					MAX_DMIVR_CHARGER_CURRENT;
 	}
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	if (of_property_read_u32(np, "qcom,pd_support_5v3a", &val) >= 0) {
+                info->data.pd_support_5v3a = val;
+        } else {
+                chg_err("use pd_support_5v3a false\n");
+                info->data.pd_support_5v3a = 0;
+        }
+
+#endif
+
 	/* fast charging algo support indicator */
 	info->enable_fast_charging_indicator =
 			of_property_read_bool(np, "enable_fast_charging_indicator");
@@ -6911,6 +6922,24 @@ int oplus_chg_pd_setup(void)
 		__func__, chip->calling_on,
 		chip->camera_on, chip->charger_volt,
 		chip->soc, chip->temperature, chip->cool_down_force_5v);
+	if(pinfo->data.pd_support_5v3a) {
+		if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO
+			|| pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK
+			|| pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30) {
+			adapter_dev_get_cap(pinfo->pd_adapter, MTK_PD_APDO, &cap);
+			for (i = 0; i < cap.nr; i++) {
+				if (cap.min_mv[i] <= VBUS_5V && VBUS_5V <= cap.max_mv[i]) {
+					vbus_mv = VBUS_5V;
+					ibus_ma = cap.ma[i];
+					if (ibus_ma > IBUS_3A)
+						ibus_ma = IBUS_3A;
+					break;
+				}
+			}
+		}
+                ret = oplus_pdc_setup(&vbus_mv, &ibus_ma);
+		return ret;
+        }
 	if (!chip->calling_on
 		&& !chip->camera_on
 		&& chip->charger_volt < PD_CHG_9V2A_VOLT_THRESHOLD

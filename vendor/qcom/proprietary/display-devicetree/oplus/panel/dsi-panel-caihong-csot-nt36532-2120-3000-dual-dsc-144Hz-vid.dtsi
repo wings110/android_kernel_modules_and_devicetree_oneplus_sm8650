@@ -34,7 +34,7 @@
 			timing@0 {
 				qcom,mdss-dsi-panel-width = <1500>;
 				qcom,mdss-dsi-panel-height = <2120>;
-				qcom,mdss-dsi-h-front-porch = <120>;
+				qcom,mdss-dsi-h-front-porch = <118>;
 				qcom,mdss-dsi-h-back-porch = <100>;
 				qcom,mdss-dsi-h-pulse-width = <20>;
 				qcom,mdss-dsi-h-sync-skew = <0>;
@@ -42,6 +42,7 @@
 				qcom,mdss-dsi-v-front-porch = <26>;
 				qcom,mdss-dsi-v-pulse-width = <2>;
 				qcom,mdss-dsi-panel-framerate = <120>;
+				qcom,mdss-dsi-panel-clockrate = <1254876800>;
 
 				qcom,mdss-dsi-on-command = [
 					39 01 00 00 00 00 02 FF 22
@@ -250,7 +251,7 @@
 	qcom,mdss-dsi-pan-enable-dynamic-fps;
 	qcom,mdss-dsi-pan-fps-update = "dfps_immediate_porch_mode_both_hv_porch";
 	qcom,dsi-supported-dfps-list = <120 144 90  60   50   48   30>;
-	qcom,dsi-dfps-hfp-list       = <120 59  120 120  120  120  120>;
+	qcom,dsi-dfps-hfp-list       = <118 57  118 118  118  118  118>;
 	qcom,dsi-dfps-hbp-list       = <100 38  100 100  100  100  100>;
 	qcom,dsi-dfps-hpw-list       = <20  20  20  20   20   20   20>;
 	qcom,dsi-dfps-vbp-list       = <208 208 208 208  208  208  208>;
@@ -259,8 +260,6 @@
 
 	qcom,mdss-dsi-display-timings {
 		timing@0 {
-			qcom,mdss-dsi-panel-phy-timings = [00 2A 0A 0B 1B 19 0B
-				0B 0A 02 04 00 22 10];
 			qcom,mdss-dsi-fps-switch-120-command = [
 				39 00 00 40 00 00 02 B2 91
 				39 00 00 00 00 00 02 B3 40

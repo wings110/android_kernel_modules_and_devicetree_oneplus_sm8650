@@ -261,8 +261,10 @@ int uart_package_data(char *buf, int len, unsigned char *p_out, int *p_len)
 
 int uart_unpack_data(char *buf, int len, unsigned char *out_buf, int *out_len)
 {
-    *out_len = len - 6;//6:start+addr1+addr2 +  end+sync+sync
-    memcpy(out_buf, &buf[3], *out_len);
+    if (len > 6) {
+        *out_len = len - 6;//6:start+addr1+addr2 +  end+sync+sync
+        memcpy(out_buf, &buf[3], *out_len);
+    }
     return 0;
 }
 
@@ -437,8 +439,14 @@ static int pogo_keyboard_mod_data_process(char *buf, int len)
 
 bool pogo_keyboard_data_is_valid(char *buf, int len)
 {
-    char flag = buf[2];
-    unsigned short crc16 = (buf[len - 5] << 8) | buf[len - 4];
+    char flag = 0;
+    unsigned short crc16 = 0;
+    if (len < 5) {
+        kb_err("keyboard data is not valid!!!\n");
+        return false;
+    }
+    flag = buf[2];
+    crc16 = (buf[len - 5] << 8) | buf[len - 4];
     kb_debug("flag:%2x crc16:%4x cal_crc:%4x\n", flag, crc16, app_crc16_get(buf, len - 5, CRC_TYPE_IBM));
     if (flag == ONE_WIRE_BUS_PACKET_KEYBOARD_ADDR || flag == ONE_WIRE_BUS_PACKET_PAD_ADDR) {
         if (crc16 == app_crc16_get(buf, len - 5, CRC_TYPE_IBM))
@@ -515,16 +523,21 @@ int pogo_keyboard_recv(char *buf, int len)
                 recv_decode_flag = true;
                 recv_decode_cnt++;
                 if(recv_decode_cnt > 3) {
+                    recv_decode_flag = false;
                     break;
                 }
             }
         }
-        if (rec_temp_buf_index >= UART_BUFFER_SIZE)
+
+        if (rec_temp_buf_index >= UART_BUFFER_SIZE) {
             rec_temp_buf_index = 0;
+            recv_start_flag = false;
+        }
 
         if (recv_decode_flag == true) {
             recv_decode_flag = false;
-            if (pogo_keyboard_data_is_valid(recv_buf, rec_temp_buf_index)) {
+            if ((rec_temp_buf_index > 6) &&
+                pogo_keyboard_data_is_valid(recv_buf, rec_temp_buf_index)) {
                 uart_unpack_data(recv_buf, rec_temp_buf_index, data_buf, &out_len);
                 // sprintf(TAG, "%s  %d recv ", __func__, __LINE__);
                 // pogo_keyboard_info_buf(data_buf, out_len);

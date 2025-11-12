@@ -69,7 +69,8 @@ extern bool mt6338_accdet_irq_check_and_set(void);
 enum switch_vendor {
     FSA4480 = 0,
     HL5280,
-    DIO4480
+    DIO4480,
+    BCT4480
 };
 
 #ifdef OPLUS_ARCH_EXTENDS
@@ -827,6 +828,9 @@ static int fsa4480_probe(struct i2c_client *i2c,
 	if (HL5280_DEVICE_REG_VALUE == reg_value) {
 		dev_info(fsa_priv->dev, "%s: switch chip is HL5280\n", __func__);
 		fsa_priv->vendor = HL5280;
+        } else if (0x09 == reg_value) {
+                dev_info(fsa_priv->dev, "%s: switch chip is BCT4480\n", __func__);
+                fsa_priv->vendor = BCT4480;
         } else if (0xF1 == reg_value) {
 		dev_info(fsa_priv->dev, "%s: switch chip is DIO4480\n", __func__);
 		fsa_priv->vendor = DIO4480;

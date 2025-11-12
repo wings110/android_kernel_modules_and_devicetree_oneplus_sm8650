@@ -108,6 +108,7 @@ struct oplus_chg_wired {
 	struct work_struct fcc_changed_work;
 	struct work_struct qc_check_work;
 	struct work_struct pd_check_work;
+	struct work_struct icl_vote_callback_work;
 	struct delayed_work pd_config_work;
 	struct delayed_work qc_config_work;
 
@@ -126,6 +127,7 @@ struct oplus_chg_wired {
 	struct completion pd_action_ack;
 	struct completion qc_check_ack;
 	struct completion pd_check_ack;
+	struct completion pd_svooc_wait_ack;
 
 	bool unwakelock_chg;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
@@ -158,6 +160,8 @@ struct oplus_chg_wired {
 	int qc_retry_count;
 	unsigned int err_code;
 	struct mutex icl_lock;
+	int vote_icl_ma;
+	bool vote_step;
 	struct mutex current_lock;
 
 #if IS_ENABLED(CONFIG_OPLUS_DYNAMIC_CONFIG_CHARGER)
@@ -1070,6 +1074,13 @@ static void oplus_wired_wired_subs_callback(struct mms_subscribe *subs,
 		case WIRED_ITEM_CHARGER_VOL_MAX:
 			/* TODO */
 			break;
+		case WIRED_TIME_ABNORMAL_ADAPTER:
+			if ((is_pd_svooc_votable_available(chip) &&
+				!!get_effective_result(chip->pd_svooc_votable))) {
+				chg_err("pd_svooc, complete wait\n");
+				complete(&chip->pd_svooc_wait_ack);
+			}
+			break;
 		default:
 			break;
 		}
@@ -1155,6 +1166,7 @@ static void oplus_wired_plugin_work(struct work_struct *work)
 		vote(chip->icl_votable, HIDL_VOTER, false, 0, true);
 		vote(chip->icl_votable, MAX_VOTER, false, 0, true);
 		vote(chip->icl_votable, STRATEGY_VOTER, false, 0, true);
+		vote(chip->icl_votable, PD_PDO_ICL_VOTER, false, 0, true);
 		chip->pd_retry_count = 0;
 		chip->qc_retry_count = 0;
 		chip->qc_action = OPLUS_ACTION_NULL;
@@ -1163,6 +1175,7 @@ static void oplus_wired_plugin_work(struct work_struct *work)
 		complete_all(&chip->pd_action_ack);
 		complete_all(&chip->qc_check_ack);
 		complete_all(&chip->pd_check_ack);
+		complete_all(&chip->pd_svooc_wait_ack);
 		cancel_delayed_work_sync(&chip->qc_config_work);
 		cancel_delayed_work_sync(&chip->pd_config_work);
 		cancel_work_sync(&chip->qc_check_work);
@@ -1334,6 +1347,19 @@ static void oplus_wired_pd_check_work(struct work_struct *work)
 				return;
 			}
 		}
+
+		chg_err("start pd_svooc wait\n");
+		reinit_completion(&chip->pd_svooc_wait_ack);
+		rc = wait_for_completion_timeout(
+				&chip->pd_svooc_wait_ack, msecs_to_jiffies(200));
+		if (rc) {
+			chg_err("pd_svooc now\n");
+			oplus_cpa_switch_end(chip->cpa_topic, CHG_PROTOCOL_PD);
+			return;
+		} else {
+			chg_err("pd_svooc wait timeout\n");
+		}
+
 		if (get_client_vote(chip->pd_boost_disable_votable, SVID_VOTER) > 0) {
 			oplus_cpa_switch_end(chip->cpa_topic, CHG_PROTOCOL_PD);
 			return;
@@ -1626,6 +1652,20 @@ static int oplus_wired_fcc_vote_callback(struct votable *votable, void *data,
 	return rc;
 }
 
+static void oplus_wired_icl_vote_callback_work(struct work_struct *work)
+{
+	struct oplus_chg_wired *chip =
+		container_of(work, struct oplus_chg_wired, icl_vote_callback_work);
+
+	mutex_lock(&chip->icl_lock);
+	if (chip->chg_mode == OPLUS_WIRED_CHG_MODE_VOOC && chip->vooc_started)
+		oplus_wired_set_icl_by_vooc(chip->wired_topic, chip->vote_icl_ma);
+	else
+		oplus_wired_set_icl(chip->vote_icl_ma, chip->vote_step);
+
+	mutex_unlock(&chip->icl_lock);
+}
+
 static int oplus_wired_icl_vote_callback(struct votable *votable, void *data,
 					 int icl_ma, const char *client,
 					 bool step)
@@ -1637,12 +1677,9 @@ static int oplus_wired_icl_vote_callback(struct votable *votable, void *data,
 		return 0;
 
 	chg_info("icl vote clent %s, icl_ma = %d\n", client, icl_ma);
-	mutex_lock(&chip->icl_lock);
-	if (chip->chg_mode == OPLUS_WIRED_CHG_MODE_VOOC && chip->vooc_started)
-		rc = oplus_wired_set_icl_by_vooc(chip->wired_topic, icl_ma);
-	else
-		rc = oplus_wired_set_icl(icl_ma, step);
-	mutex_unlock(&chip->icl_lock);
+	chip->vote_icl_ma = icl_ma;
+	chip->vote_step = step;
+	rc = schedule_work(&chip->icl_vote_callback_work);
 
 	return rc;
 }
@@ -2126,6 +2163,7 @@ static int oplus_wired_probe(struct platform_device *pdev)
 	init_completion(&chip->pd_action_ack);
 	init_completion(&chip->qc_check_ack);
 	init_completion(&chip->pd_check_ack);
+	init_completion(&chip->pd_svooc_wait_ack);
 	INIT_WORK(&chip->plugin_work, oplus_wired_plugin_work);
 	INIT_WORK(&chip->chg_type_change_work,
 		  oplus_wired_chg_type_change_work);
@@ -2141,6 +2179,7 @@ static int oplus_wired_probe(struct platform_device *pdev)
 	INIT_WORK(&chip->fcc_changed_work, oplus_wired_fcc_changed_work);
 	INIT_WORK(&chip->qc_check_work, oplus_wired_qc_check_work);
 	INIT_WORK(&chip->pd_check_work, oplus_wired_pd_check_work);
+	INIT_WORK(&chip->icl_vote_callback_work, oplus_wired_icl_vote_callback_work);
 
 	chip->cpa_support = oplus_cpa_support();
 

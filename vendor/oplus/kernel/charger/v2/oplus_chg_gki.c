@@ -47,6 +47,7 @@ struct oplus_gki_device {
 	struct votable *vooc_curr_votable;
 	struct votable *ufcs_curr_votable;
 	struct votable *pps_curr_votable;
+	struct votable *wired_suspend_votable;
 
 	struct delayed_work status_keep_clean_work;
 	struct delayed_work status_keep_delay_unlock_work;
@@ -84,6 +85,7 @@ struct oplus_gki_device {
 	bool wls_online;
 
 	bool smart_charging_screenoff;
+	bool common_charge_support;
 };
 
 static struct oplus_gki_device *g_gki_dev;
@@ -134,6 +136,14 @@ is_pps_curr_votable_available(struct oplus_gki_device *chip)
 	if (!chip->pps_curr_votable)
 		chip->pps_curr_votable = find_votable("PPS_CURR");
 	return !!chip->pps_curr_votable;
+}
+
+__maybe_unused static bool
+is_wired_suspend_votable_available(struct oplus_gki_device *chip)
+{
+	if (!chip->wired_suspend_votable)
+		chip->wired_suspend_votable = find_votable("WIRED_CHARGE_SUSPEND");
+	return !!chip->wired_suspend_votable;
 }
 
 static bool is_main_gauge_topic_available(struct oplus_gki_device *chip)
@@ -362,14 +372,37 @@ static int usb_psy_get_prop(struct power_supply *psy,
 	return 0;
 }
 
+static void usb_psy_set_icl(struct oplus_gki_device *chip, int curr_ua)
+{
+	if (!chip) {
+		chg_err("chip null\n");
+		return;
+	}
+
+	if(chip->wired_type == OPLUS_CHG_USB_TYPE_SDP
+		|| chip->wired_type == OPLUS_CHG_USB_TYPE_PD_SDP)	{
+		if (((curr_ua / 1000) < 100)
+			&& is_wired_suspend_votable_available(chip)) {
+			vote(chip->wired_suspend_votable, USB_PSY_VOTER, true, 1, false);
+			chg_err("charger suspend by usb phy\n");
+		} else if (is_wired_suspend_votable_available(chip)) {
+			vote(chip->wired_suspend_votable, USB_PSY_VOTER, false, 0, false);
+			chg_err("charger unsuspend by usb phy\n");
+		}
+	}
+}
+
 static int usb_psy_set_prop(struct power_supply *psy,
 		enum power_supply_property prop,
 		const union power_supply_propval *pval)
 {
 	int rc = 0;
+	struct oplus_gki_device *chip = power_supply_get_drvdata(psy);
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+		if (chip->common_charge_support)
+			usb_psy_set_icl(chip, pval->intval);
 		break;
 	default:
 		chg_err("set prop %d is not supported\n", prop);
@@ -1019,6 +1052,11 @@ static void oplus_gki_wired_subs_callback(struct mms_subscribe *subs,
 			}
 			chg_info("psy_type = %d, pre_wired_type = %d, wired_type = %d\n",
 				  usb_psy_desc.type, chip->pre_wired_type, chip->wired_type);
+			if (chip->wired_type == OPLUS_CHG_USB_TYPE_UNKNOWN
+				&& is_wired_suspend_votable_available(chip)) {
+				chg_info("usb plug out, unsuspend input\n");
+				vote(chip->wired_suspend_votable, USB_PSY_VOTER, false, 0, false);
+			}
 			if (!IS_ERR_OR_NULL(chip->batt_psy) &&
 			    chip->pre_wired_type != chip->wired_type) {
 				chip->pre_wired_type = chip->wired_type;
@@ -1449,11 +1487,15 @@ static __init int oplus_chg_gki_init(void)
 	g_gki_dev = gki_dev;
 
 	node = of_find_node_by_path("/soc/oplus_chg_core");
-	if (node == NULL)
+	if (node == NULL) {
 		gki_dev->smart_charging_screenoff = false;
-	else
+		gki_dev->common_charge_support = false;
+	} else {
 		gki_dev->smart_charging_screenoff = of_property_read_bool(
 			node, "oplus,smart_charging_screenoff");
+		gki_dev->common_charge_support = of_property_read_bool(
+			node, "oplus,common_charge_support");
+	}
 
 	gki_dev->time_to_full = 0;
 	INIT_WORK(&gki_dev->gauge_update_work, oplus_gki_gauge_update_work);

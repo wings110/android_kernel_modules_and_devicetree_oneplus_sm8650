@@ -242,7 +242,7 @@ def copy_log_files_to_dest(src, dest, exclude_patterns=None):
     print("\nCopy build log from {} to {} exclude{}".format(src,dest,exclude_patterns))
     print("You can find log in {} or in {} ".format(src,dest))
     print("More information for help please read doc link: ")
-    print("https://odocs.myoas.com/docs/Wr3DVZ8l9XumadkJ/ \n")
+    print("")
 
     if not os.path.exists(src):
         raise ValueError("src dir {src} not exists".format(file_path))

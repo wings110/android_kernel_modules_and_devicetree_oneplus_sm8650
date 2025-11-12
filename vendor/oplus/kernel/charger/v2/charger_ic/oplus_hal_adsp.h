@@ -99,6 +99,10 @@
 #define BC_VOOC_GAN_MOS_ERROR	   0X72
 #define BC_UFCS_DISABLE_MOS		0X73
 #define BC_UFCS_PDO_READY		0X74
+#define BC_UFCS_VERIFY_AUTH_READY	0X75
+#define BC_UFCS_VDM_EMARK_READY		0X76
+#define BC_UFCS_PWR_INFO_READY		0X77
+#define PD_SOURCECAP_DONE		0X78
 #endif
 
 #ifdef OPLUS_FEATURE_CHG_BASIC
@@ -572,6 +576,7 @@ struct battery_chg_dev {
 	struct delayed_work	unsuspend_usb_work;
 	struct delayed_work	oem_lcm_en_check_work;
 	struct delayed_work	ctrl_lcm_frequency;
+	struct delayed_work	sourcecap_done_work;
 	u32			oem_misc_ctl_data;
 	bool			oem_usb_online;
 	bool			oem_lcm_check;

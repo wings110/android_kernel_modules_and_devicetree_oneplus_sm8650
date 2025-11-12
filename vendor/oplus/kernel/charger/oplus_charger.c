@@ -13961,6 +13961,25 @@ void oplus_smart_charge_by_shell_temp(struct oplus_chg_chip *chip, int val)
 
 	switch (subtype) {
 	case CHARGER_SUBTYPE_DEFAULT:
+		if (c_level_index <= 0) {
+			chip->limits.input_current_cool_down_ma = val;
+			chip->limits.input_current_charger_ma =
+				choose_little_current(val, chip->limits.default_input_current_charger_ma);
+			chip->limits.pd_input_current_charger_ma =
+				choose_little_current(val, chip->limits.default_pd_input_current_charger_ma);
+			chip->limits.qc_input_current_charger_ma =
+				choose_little_current(val, chip->limits.default_qc_input_current_charger_ma);
+			chip->limits.input_current_vooc_ma_high =
+				choose_little_current(val, chip->limits.default_input_current_vooc_ma_high);
+			chip->limits.input_current_vooc_ma_warm =
+				choose_little_current(val, chip->limits.default_input_current_vooc_ma_warm);
+			chip->limits.input_current_vooc_ma_normal =
+				choose_little_current(val, chip->limits.default_input_current_vooc_ma_normal);
+		}
+		chip->cool_down_done = true;
+		chip->cool_down_force_5v = false;
+		chip->chg_ctrl_by_cool_down = true;
+		chg_ctrl_by_sale_mode = false;
 		break;
 	case CHARGER_SUBTYPE_FASTCHG_SVOOC:
 		/*for 7bits 25 current steps*/
