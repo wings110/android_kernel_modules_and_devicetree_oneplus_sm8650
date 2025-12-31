@@ -357,6 +357,8 @@
 		oplus,smooth_switch;
 		oplus,reserve_chg_soc = <2>;
 		oplus,reserve_dis_soc = <2>;
+
+		oplus_spec,batt_full_time = <300>;
 	};
 
 	oplus_vooc: oplus,vooc {
